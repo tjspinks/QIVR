@@ -74,28 +74,36 @@ def parse_args():
     return parser.parse_args()
 
 def format_report(domain: str, results: dict) -> str:
-    report_lines = [f"\n\U0001F4CA Domain Scan Report: {domain}", '-'*50]
+    report_lines = [f"\n📊 Domain Scan Report: {domain}", '-' * 50]
+
     for name, detail in results.items():
         if name == 'overall':
             continue
 
+        # Determine status label
         if detail['ok']:
             status = '✅ PASS'
-        elif name in ('dnssec', 'mta_sts', 'tls_rpt', 'caa') and 'not implemented' in detail.get('text', '').lower():
+        elif name in ('dnssec', 'mta_sts', 'tls_rpt', 'caa') and (
+            'not implemented' in detail['text'].lower()
+            or 'not supported' in detail['text'].lower()
+        ):
             status = '⚪ NEUTRAL'
         else:
             status = '❌ FAIL'
 
         selector = detail.get('selector', 'N/A')
-        report_lines.append(f"{status} {name.upper():8} | Selector: {selector} | Detail: {detail['text']}")
+        report_lines.append(
+            f"{status} {name.upper():10} | Selector: {selector} | Detail: {detail['text']}"
+        )
+
         if status == '❌ FAIL' and name in SUGGESTIONS:
             report_lines.append(f"   💡 Tip: {SUGGESTIONS[name]}")
 
     overall = results['overall']
     report_lines.extend([
-        '-'*50,
+        '-' * 50,
         f"🏅 Overall Score: {overall['score']} ({overall['reason']})",
-        '-'*50
+        '-' * 50
     ])
 
     if not results.get('dkim', {}).get('ok', True):
