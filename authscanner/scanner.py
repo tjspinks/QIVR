@@ -87,7 +87,7 @@ def check_bimi(domain):
 
 # ------------- DNSBL ---------------
 def check_dnsbl(domain):
-    from config import SPAMHAUS_DQS_KEY, USE_SPAMHAUS_DQS
+    from authscanner.config import SPAMHAUS_DQS_KEY, USE_SPAMHAUS_DQS
     ok = True
     notes = []
     mx_ok, mx_hosts = check_mx(domain)
