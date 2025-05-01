@@ -13,7 +13,7 @@ from authscanner.config import (
     ENABLE_S3,
     ENABLE_SLACK,
     SLACK_WEBHOOK_URL,
-    ...
+    ALERT_SCORE_THRESHOLD
 )
 
 # Local filenames
