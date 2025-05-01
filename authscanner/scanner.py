@@ -92,11 +92,17 @@ DNSBL_PROVIDERS = [
     'b.barracudacentral.org'
 ]
 
+# Specific Spamhaus error return codes (should not be treated as listing)
+SPAMHAUS_ERROR_CODES = {
+    ipaddress.IPv4Address('127.255.255.254'): 'Query via public/open resolver',
+    ipaddress.IPv4Address('127.255.255.255'): 'Excessive number of queries'
+}
+
 def check_dnsbl(domain):
     """
     Returns (dnsbl_ok: bool, dnsbl_text: str).
-    Checks each MX host's IP against DNSBLs, distinguishing actual listings
-    from Spamhaus error codes (127.255.255.x), timeouts, and no-answer cases.
+    Checks each MX host's IP against DNSBLs, distinguishing actual blacklists
+    from Spamhaus error codes in 127.255.255.0/24, timeouts, and no-answer cases.
     """
     mx_ok, mx_hosts = check_mx(domain)
     if not mx_ok:
@@ -119,15 +125,12 @@ def check_dnsbl(domain):
                     answers = dns.resolver.resolve(query, 'A')
                     for ans in answers:
                         listed_ip = ipaddress.IPv4Address(ans.to_text())
-                        # Skip Spamhaus error return codes 127.255.255.0/24
-                        if listed_ip in ipaddress.IPv4Network('127.255.255.0/24'):
-                            notes.append(f'Error code from {blk}: {listed_ip}')
-                        # Treat true blacklist listings in 127.0.0.0/8 (excluding the error range)
+                        if listed_ip in SPAMHAUS_ERROR_CODES:
+                            notes.append(f"Spamhaus error code from {blk}: {SPAMHAUS_ERROR_CODES[listed_ip]}")
                         elif listed_ip in ipaddress.IPv4Network('127.0.0.0/8'):
                             ok = False
                             notes.append(f'IP {ip} blacklisted by {blk} ({listed_ip})')
                 except dns.resolver.NXDOMAIN:
-                    # Not listed: expected
                     continue
                 except dns.resolver.NoAnswer:
                     continue
