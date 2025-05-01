@@ -70,7 +70,8 @@ def parse_args():
     p = argparse.ArgumentParser(
         description='AuthScanner: DNS checks for email authentication health.'
     )
-    grp = p.add_mutually_exclusive_group(required=True)
+    # Neither flag is strictly required; default file is used if domain omitted
+    grp = p.add_mutually_exclusive_group()
     grp.add_argument(
         '-d', '--domain',
         help='Scan a single domain'
@@ -93,7 +94,6 @@ def main():
     args = parse_args()
 
     # Build the list of domains
-    domains = []
     if args.domain:
         domains = [args.domain]
     else:
