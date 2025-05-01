@@ -87,6 +87,8 @@ def check_bimi(domain):
     return False, None, 'No BIMI record found'
 
 # ------------- DNSBL ---------------
+import dns.resolver
+
 DNSBL_PROVIDERS = [
     'zen.spamhaus.org',
     'bl.spamcop.net',
@@ -99,20 +101,38 @@ def check_dnsbl(domain):
     mx_ok, mx_hosts = check_mx(domain)
     if not mx_ok:
         return False, 'No MX records'
-    host = mx_hosts[0]
+
     try:
-        ips = [a.to_text() for a in dns.resolver.resolve(host, 'A')]
-    except Exception as e:
-        return False, f'Error resolving MX host: {e}'
-    for ip in ips:
-        rev = '.'.join(reversed(ip.split('.')))
-        for blk in DNSBL_PROVIDERS:
+        # Check all MX hosts
+        for host in mx_hosts:
             try:
-                dns.resolver.resolve(f"{rev}.{blk}", 'A')
-                ok = False
-                notes.append(f"Blacklisted by {blk}")
-            except dns.resolver.NXDOMAIN:
-                pass
+                ips = [a.to_text() for a in dns.resolver.resolve(host, 'A')]
+            except Exception as e:
+                notes.append(f'Error resolving MX host ({host}): {e}')
+                continue  # Don't immediately fail the entire domain
+
+            for ip in ips:
+                rev = '.'.join(reversed(ip.split('.')))
+                for blk in DNSBL_PROVIDERS:
+                    query = f"{rev}.{blk}"
+                    try:
+                        answers = dns.resolver.resolve(query, 'A')
+                        ok = False
+                        for answer in answers:
+                            notes.append(f"IP {ip} listed by {blk} ({answer})")
+                    except dns.resolver.NXDOMAIN:
+                        # NXDOMAIN means not listed, this is expected
+                        continue
+                    except dns.resolver.NoAnswer:
+                        # Treat as clean, since no answer is generally fine
+                        continue
+                    except dns.resolver.Timeout:
+                        notes.append(f"Timeout querying {blk}")
+                    except dns.exception.DNSException as dns_e:
+                        notes.append(f"DNS error ({query}): {dns_e}")
+    except Exception as e:
+        return False, f'Unexpected error: {e}'
+
     return (True, 'Clean') if ok else (False, '; '.join(notes))
 
 # ------------- DNSSEC ---------------
