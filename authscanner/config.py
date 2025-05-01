@@ -3,7 +3,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-SPAMHAUS_DQS_KEY = os.getenv("SPAMHAUS_DQS_KEY")
+# DNSBL
+SPAMHAUS_DQS_KEY = os.getenv("SPAMHAUS_DQS_KEY")  # already set
+USE_SPAMHAUS_DQS = os.getenv("USE_SPAMHAUS_DQS", "false").lower() == "true"
 
 # Path to the file containing domains to scan (one per line)
 DOMAINS_FILE = os.getenv("DOMAINS_FILE", "authscanner/domains.txt")
