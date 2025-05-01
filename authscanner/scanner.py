@@ -86,61 +86,51 @@ def check_bimi(domain):
     return False, None, 'No BIMI record found'
 
 # ------------- DNSBL ---------------
-DNSBL_PROVIDERS = [
-    'zen.spamhaus.org',
-    'bl.spamcop.net',
-    'b.barracudacentral.org'
-]
-
-# Specific Spamhaus error return codes (should not be treated as listing)
-SPAMHAUS_ERROR_CODES = {
-    ipaddress.IPv4Address('127.255.255.254'): 'Query via public/open resolver',
-    ipaddress.IPv4Address('127.255.255.255'): 'Excessive number of queries'
-}
-
 def check_dnsbl(domain):
-    """
-    Returns (dnsbl_ok: bool, dnsbl_text: str).
-    Checks each MX host's IP against DNSBLs, distinguishing actual blacklists
-    from Spamhaus error codes in 127.255.255.0/24, timeouts, and no-answer cases.
-    """
+    from config import SPAMHAUS_DQS_KEY, USE_SPAMHAUS_DQS
+    ok = True
+    notes = []
     mx_ok, mx_hosts = check_mx(domain)
     if not mx_ok:
         return False, 'No MX records'
 
-    ok = True
-    notes = []
     for host in mx_hosts:
         try:
-            ips = [r.to_text() for r in dns.resolver.resolve(host, 'A')]
+            ips = [a.to_text() for a in dns.resolver.resolve(host, 'A')]
         except Exception as e:
-            notes.append(f'Error resolving MX host {host}: {e}')
+            notes.append(f'Error resolving MX host ({host}): {e}')
             continue
 
         for ip in ips:
-            rev_ip = '.'.join(reversed(ip.split('.')))
-            for blk in DNSBL_PROVIDERS:
-                query = f"{rev_ip}.{blk}"
+            rev = '.'.join(reversed(ip.split('.')))
+            providers = []
+
+            if USE_SPAMHAUS_DQS:
+                providers = [f"{rev}.{SPAMHAUS_DQS_KEY}.zen.dq.spamhaus.net"]
+            else:
+                providers = [f"{rev}.zen.spamhaus.org", f"{rev}.bl.spamcop.net", f"{rev}.b.barracudacentral.org"]
+
+            for blk in providers:
                 try:
-                    answers = dns.resolver.resolve(query, 'A')
-                    for ans in answers:
-                        listed_ip = ipaddress.IPv4Address(ans.to_text())
-                        if listed_ip in SPAMHAUS_ERROR_CODES:
-                            notes.append(f"Spamhaus error code from {blk}: {SPAMHAUS_ERROR_CODES[listed_ip]}")
-                        elif listed_ip in ipaddress.IPv4Network('127.0.0.0/8'):
-                            ok = False
-                            notes.append(f'IP {ip} blacklisted by {blk} ({listed_ip})')
+                    answers = dns.resolver.resolve(blk, 'A')
+                    for r in answers:
+                        code = r.to_text()
+                        # DQS error range (not a real listing)
+                        if code.startswith("127.255.255."):
+                            notes.append(f"Spamhaus query error from {blk}: {code}")
+                            continue
+                        notes.append(f"IP {ip} listed by {blk} ({code})")
+                        ok = False
                 except dns.resolver.NXDOMAIN:
                     continue
                 except dns.resolver.NoAnswer:
                     continue
                 except dns.resolver.Timeout:
-                    notes.append(f'Timeout querying {blk} for {ip}')
+                    notes.append(f"Timeout querying {blk}")
                 except dns.exception.DNSException as dns_e:
-                    notes.append(f'DNS error querying {blk} for {ip}: {dns_e}')
+                    notes.append(f"DNS error ({blk}): {dns_e}")
 
     return (True, 'Clean') if ok else (False, '; '.join(notes))
-
 # ------------- DNSSEC ---------------
 def check_dnssec(domain):
     try:
