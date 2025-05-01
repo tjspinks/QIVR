@@ -8,8 +8,6 @@ import requests
 
 from authscanner.config import (
     DOMAINS_FILE,
-    RESULTS_CSV,
-    RESULTS_JSON,
     ENABLE_S3,
     ENABLE_SLACK,
     SLACK_WEBHOOK_URL,
@@ -18,13 +16,17 @@ from authscanner.config import (
     S3_KEY_PREFIX
 )
 
+# Local filenames for logs
+RESULTS_CSV = "results.csv"
+RESULTS_JSON = "results.json"
+
 def log_to_csv(domain, checks, score, reason):
     """Append a row to results.csv with detailed check flags."""
     timestamp = datetime.now(timezone.utc).isoformat()
     file_exists = os.path.isfile(RESULTS_CSV)
 
-    headers = ["Timestamp", "Domain"] + [k for k in checks.keys()] + ["Score", "Reason"]
-    row = [timestamp, domain] + [checks[k] for k in checks.keys()] + [score, reason]
+    headers = ["Timestamp", "Domain"] + list(checks.keys()) + ["Score", "Reason"]
+    row = [timestamp, domain] + list(checks.values()) + [score, reason]
 
     with open(RESULTS_CSV, mode="a", newline="") as fp:
         writer = csv.writer(fp)
@@ -85,16 +87,14 @@ def send_slack_alert(domain, score, reason):
         print(f"❌ Slack request error: {e}")
 
 def upload_to_s3(json_data=None):
-    """
-    Upload both CSV and JSON to S3 if ENABLE_S3 is true.
-    If json_data is provided, upload that as a separate .json object.
-    """
+    """Upload both CSV and JSON to S3 if ENABLE_S3 is true."""
     if not ENABLE_S3:
         return
 
     s3 = boto3.client("s3")
     timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
 
+    # Upload CSV
     if os.path.isfile(RESULTS_CSV):
         key_csv = f"{S3_KEY_PREFIX}results-{timestamp}.csv"
         try:
@@ -103,6 +103,7 @@ def upload_to_s3(json_data=None):
         except Exception as e:
             print(f"❌ CSV upload failed: {e}")
 
+    # Upload JSON (inline or file)
     if json_data is not None:
         key_json = f"{S3_KEY_PREFIX}results-{timestamp}.json"
         try:
