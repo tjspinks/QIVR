@@ -50,3 +50,4 @@ htmlcov/
 # Authscanner outputs
 results.csv
 results.json
+authscanner/awscliv2.zip
