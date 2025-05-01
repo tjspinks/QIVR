@@ -1,86 +1,90 @@
 import dns.resolver
 import socket
 
+# Utilities
+
+def _extract_txt(rdata):
+    """
+    Join DNS TXT record segments into a single string.
+    """
+    try:
+        # rdata.strings is a list of byte segments
+        parts = getattr(rdata, 'strings', None)
+        if parts:
+            return ''.join(seg.decode() for seg in parts)
+        # fallback: use to_text()
+        return rdata.to_text().strip('"')
+    except Exception:
+        return ''
+
 # ---------------- SPFs ----------------
 def check_spf(domain):
-    """
-    Returns (spf_ok: bool, spf_text: str)
-    """
     try:
         answers = dns.resolver.resolve(domain, 'TXT')
         for rdata in answers:
-            for txt in rdata.strings:
-                txt_str = txt.decode()
-                if txt_str.lower().startswith('v=spf1'):
-                    return True, txt_str
-        return False, ''
+            txt = _extract_txt(rdata)
+            if txt.lower().startswith('v=spf1'):
+                return True, txt
+        return False, 'No SPF record found'
     except Exception as e:
         return False, f"Error: {e}"
 
 # -------------- DMARC ----------------
 def check_dmarc(domain):
-    """
-    Returns (dmarc_ok: bool, dmarc_text: str)
-    """
     try:
-        record = f"_dmarc.{domain}"
-        answers = dns.resolver.resolve(record, 'TXT')
+        answers = dns.resolver.resolve(f"_dmarc.{domain}", 'TXT')
         for rdata in answers:
-            for txt in rdata.strings:
-                txt_str = txt.decode()
-                if txt_str.lower().startswith('v=dmarc1'):
-                    return True, txt_str
-        return False, ''
+            txt = _extract_txt(rdata)
+            if txt.lower().startswith('v=dmarc1'):
+                return True, txt
+        return False, 'No DMARC record found'
     except Exception as e:
         return False, f"Error: {e}"
 
 # --------------- DKIM ----------------
-def check_dkim(domain, selector="default"):
-    """
-    Returns (dkim_ok: bool, dkim_text: str)
-    """
-    try:
-        record = f"{selector}._domainkey.{domain}"
-        answers = dns.resolver.resolve(record, 'TXT')
-        for rdata in answers:
-            for txt in rdata.strings:
-                txt_str = txt.decode()
-                if txt_str.lower().startswith('v=dkim1'):
-                    return True, txt_str
-        return False, ''
-    except Exception as e:
-        return False, f"Error: {e}"
+COMMON_DKIM_SELECTORS = [
+    'default','selector1','selector2','google','k1','s1','s2',
+    'smtp','mail','email','key1','key2','dkim','m1','mta1',
+    'newsmtp','mx','cloud','mail1'
+]
+
+def check_dkim(domain):
+    for sel in COMMON_DKIM_SELECTORS:
+        try:
+            answers = dns.resolver.resolve(f"{sel}._domainkey.{domain}", 'TXT')
+            for rdata in answers:
+                txt = _extract_txt(rdata)
+                if txt.lower().startswith('v=dkim1'):
+                    return True, sel, txt
+        except Exception:
+            continue
+    return False, None, 'No DKIM record found'
 
 # --------------- MX ------------------
 def check_mx(domain):
-    """
-    Returns (mx_ok: bool, mx_text: str)
-    """
     try:
         answers = dns.resolver.resolve(domain, 'MX')
-        mx_hosts = sorted([rdata.exchange.to_text().rstrip('.') for rdata in answers])
-        if not mx_hosts:
-            return False, ''
-        return True, ", ".join(mx_hosts)
+        hosts = sorted(rdata.exchange.to_text().rstrip('.') for rdata in answers)
+        if hosts:
+            return True, hosts
+        return False, 'No MX records'
     except Exception as e:
         return False, f"Error: {e}"
 
 # -------------- BIMI ----------------
-def check_bimi(domain, selector="default"):
-    """
-    Returns (bimi_ok: bool, bimi_text: str)
-    """
-    try:
-        record = f"{selector}._bimi.{domain}"
-        answers = dns.resolver.resolve(record, 'TXT')
-        for rdata in answers:
-            for txt in rdata.strings:
-                txt_str = txt.decode()
-                if txt_str.lower().startswith('v=bimi1'):
-                    return True, txt_str
-        return False, ''
-    except Exception as e:
-        return False, f"Error: {e}"
+COMMON_BIMI_SELECTORS = ['default']
+
+def check_bimi(domain):
+    for sel in COMMON_BIMI_SELECTORS:
+        try:
+            answers = dns.resolver.resolve(f"{sel}._bimi.{domain}", 'TXT')
+            for rdata in answers:
+                txt = _extract_txt(rdata)
+                if txt.lower().startswith('v=bimi1'):
+                    return True, sel, txt
+        except Exception:
+            continue
+    return False, None, 'No BIMI record found'
 
 # ------------- DNSBL ---------------
 DNSBL_PROVIDERS = [
@@ -90,39 +94,29 @@ DNSBL_PROVIDERS = [
 ]
 
 def check_dnsbl(domain):
-    """
-    Returns (dnsbl_ok: bool, dnsbl_text: str)
-    Checks the first MX host's IP against common DNSBLs.
-    """
     ok = True
     notes = []
+    mx_ok, mx_hosts = check_mx(domain)
+    if not mx_ok:
+        return False, 'No MX records'
+    host = mx_hosts[0]
     try:
-        mx_ok, mx_text = check_mx(domain)
-        if not mx_ok:
-            return False, 'No MX records'
-        host = mx_text.split(',')[0].strip()
         ips = [a.to_text() for a in dns.resolver.resolve(host, 'A')]
-        for ip in ips:
-            rev = '.'.join(reversed(ip.split('.')))
-            for blk in DNSBL_PROVIDERS:
-                try:
-                    dns.resolver.resolve(f"{rev}.{blk}", 'A')
-                    ok = False
-                    notes.append(f"Blacklisted by {blk}")
-                except dns.resolver.NXDOMAIN:
-                    pass
-        if ok:
-            return True, 'Clean'
-        return False, '; '.join(notes)
     except Exception as e:
-        return False, f"Error: {e}"
+        return False, f'Error resolving MX host: {e}'
+    for ip in ips:
+        rev = '.'.join(reversed(ip.split('.')))
+        for blk in DNSBL_PROVIDERS:
+            try:
+                dns.resolver.resolve(f"{rev}.{blk}", 'A')
+                ok = False
+                notes.append(f"Blacklisted by {blk}")
+            except dns.resolver.NXDOMAIN:
+                pass
+    return (True, 'Clean') if ok else (False, '; '.join(notes))
 
 # ------------- DNSSEC ---------------
 def check_dnssec(domain):
-    """
-    Returns (dnssec_ok: bool, dnssec_text: str)
-    Checks for DNSKEY records (indicating DNSSEC).
-    """
     try:
         answers = dns.resolver.resolve(domain, 'DNSKEY')
         return True, f"{len(answers)} DNSKEY records"
@@ -131,72 +125,48 @@ def check_dnssec(domain):
 
 # ----------- MTA-STS ----------------
 def check_mta_sts(domain):
-    """
-    Returns (mta_sts_ok: bool, mta_sts_text: str)
-    Checks for MTA-STS policy record.
-    """
     try:
-        record = f"_mta-sts.{domain}"
-        answers = dns.resolver.resolve(record, 'TXT')
+        answers = dns.resolver.resolve(f"_mta-sts.{domain}", 'TXT')
         for rdata in answers:
-            for txt in rdata.strings:
-                txt_str = txt.decode()
-                if 'v=STSv1' in txt_str:
-                    return True, txt_str
-        return False, ''
+            txt = _extract_txt(rdata)
+            if 'v=stsv1' in txt.lower():
+                return True, txt
+        return False, 'No MTA-STS record'
     except Exception:
         return False, ''
 
 # ---------- TLS-RPT -----------------
 def check_tls_rpt(domain):
-    """
-    Returns (tls_rpt_ok: bool, tls_rpt_text: str)
-    Checks for TLS reporting record.
-    """
     try:
-        record = f"_smtp._tls.{domain}"
-        answers = dns.resolver.resolve(record, 'TXT')
+        answers = dns.resolver.resolve(f"_smtp._tls.{domain}", 'TXT')
         for rdata in answers:
-            for txt in rdata.strings:
-                txt_str = txt.decode()
-                if 'v=TLSRPTv1' in txt_str:
-                    return True, txt_str
-        return False, ''
+            txt = _extract_txt(rdata)
+            if 'v=tlsrptv1' in txt.lower():
+                return True, txt
+        return False, 'No TLS-RPT record'
     except Exception:
         return False, ''
 
 # ------------- CAA ------------------
 def check_caa(domain):
-    """
-    Returns (caa_ok: bool, caa_text: str)
-    Checks for CAA records to restrict certificate issuance.
-    """
     try:
         answers = dns.resolver.resolve(domain, 'CAA')
-        records = []
+        recs = []
         for rdata in answers:
-            records.append(f"{rdata.flags} {rdata.tag} {rdata.value}")
-        if records:
-            return True, '; '.join(records)
-        return False, ''
+            recs.append(f"{rdata.flags} {rdata.tag} {rdata.value}")
+        return (True, '; '.join(recs)) if recs else (False, 'No CAA records')
     except Exception:
         return False, ''
 
 # ------------ PTR -------------------
 def check_ptr(domain):
-    """
-    Returns (ptr_ok: bool, ptr_text: str)
-    Performs reverse DNS on the first MX host's IP.
-    """
+    mx_ok, mx_hosts = check_mx(domain)
+    if not mx_ok:
+        return False, 'No MX records'
+    host = mx_hosts[0]
     try:
-        mx_ok, mx_text = check_mx(domain)
-        if not mx_ok:
-            return False, 'No MX records'
-        host = mx_text.split(',')[0].strip()
         ip = dns.resolver.resolve(host, 'A')[0].to_text()
-        names = socket.gethostbyaddr(ip)[0]
-        return True, names
+        name = socket.gethostbyaddr(ip)[0]
+        return True, name
     except Exception as e:
         return False, f"Error: {e}"
-
-
