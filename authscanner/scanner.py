@@ -30,6 +30,14 @@ def check_dmarc(domain):
     except Exception as e:
         return False, f"Error checking DMARC: {e}"
 
+def check_mx(domain):
+    try:
+        answers = dns.resolver.resolve(domain, "MX")
+        return True, str(answers)
+    except Exception as e:
+        return False, str(e)
+
+
 def check_dkim(domain):
     for selector in COMMON_DKIM_SELECTORS:
         dkim_domain = f"{selector}._domainkey.{domain}"
