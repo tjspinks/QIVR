@@ -1,0 +1,52 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env/
+*.env
+
+# Secrets & keys
+*.pem
+*.key
+*.crt
+
+# Mac/Windows system files
+.DS_Store
+Thumbs.db
+
+# Python packaging
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Logs
+*.log
+
+# IDE files
+.vscode/
+.idea/
+
+# Jupyter and notebook metadata
+.ipynb_checkpoints/
+
+# AWS & CLI artifacts
+.aws/
+*.bak
+*.swp
+
+# Coverage reports
+htmlcov/
+.coverage
+.tox/
+.nox/
+.pytest_cache/
+
+# Authscanner outputs
+results.csv
+results.json
