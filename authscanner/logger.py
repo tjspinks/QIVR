@@ -6,12 +6,14 @@ from datetime import datetime, timezone
 import boto3
 import requests
 
-from config import (
-    SLACK_WEBHOOK_URL,
-    S3_BUCKET_NAME,
-    S3_KEY_PREFIX,
-    ENABLE_SLACK,
+from authscanner.config import (
+    DOMAINS_FILE,
+    RESULTS_CSV,
+    RESULTS_JSON,
     ENABLE_S3,
+    ENABLE_SLACK,
+    SLACK_WEBHOOK_URL,
+    ...
 )
 
 # Local filenames
