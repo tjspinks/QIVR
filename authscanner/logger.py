@@ -13,20 +13,16 @@ from authscanner.config import (
     ENABLE_S3,
     ENABLE_SLACK,
     SLACK_WEBHOOK_URL,
-    ALERT_SCORE_THRESHOLD
+    ALERT_SCORE_THRESHOLD,
+    S3_BUCKET_NAME,
+    S3_KEY_PREFIX
 )
-
-# Local filenames
-RESULTS_CSV = "results.csv"
-RESULTS_JSON = "results.json"
-
 
 def log_to_csv(domain, checks, score, reason):
     """Append a row to results.csv with detailed check flags."""
     timestamp = datetime.now(timezone.utc).isoformat()
     file_exists = os.path.isfile(RESULTS_CSV)
 
-    # Build CSV header on first write
     headers = ["Timestamp", "Domain"] + [k for k in checks.keys()] + ["Score", "Reason"]
     row = [timestamp, domain] + [checks[k] for k in checks.keys()] + [score, reason]
 
@@ -37,7 +33,6 @@ def log_to_csv(domain, checks, score, reason):
         writer.writerow(row)
 
     print(f"📦 CSV logged: {domain} (score: {score})")
-
 
 def log_to_json(domain, checks, score, reason):
     """Write or append a JSON structure for detailed results."""
@@ -62,7 +57,6 @@ def log_to_json(domain, checks, score, reason):
         json.dump(data, fp, indent=2)
 
     print(f"📄 JSON logged: {domain}")
-
 
 def send_slack_alert(domain, score, reason):
     """Post a message to Slack if ENABLE_SLACK is true."""
@@ -90,7 +84,6 @@ def send_slack_alert(domain, score, reason):
     except requests.RequestException as e:
         print(f"❌ Slack request error: {e}")
 
-
 def upload_to_s3(json_data=None):
     """
     Upload both CSV and JSON to S3 if ENABLE_S3 is true.
@@ -102,7 +95,6 @@ def upload_to_s3(json_data=None):
     s3 = boto3.client("s3")
     timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
 
-    # Upload CSV
     if os.path.isfile(RESULTS_CSV):
         key_csv = f"{S3_KEY_PREFIX}results-{timestamp}.csv"
         try:
@@ -111,7 +103,6 @@ def upload_to_s3(json_data=None):
         except Exception as e:
             print(f"❌ CSV upload failed: {e}")
 
-    # Upload JSON payload if given or file exists
     if json_data is not None:
         key_json = f"{S3_KEY_PREFIX}results-{timestamp}.json"
         try:
@@ -132,7 +123,6 @@ def upload_to_s3(json_data=None):
         except Exception as e:
             print(f"❌ JSON upload failed: {e}")
 
-
 def list_versions(bucket=S3_BUCKET_NAME, key_prefix=S3_KEY_PREFIX):
     """List object versions under the given prefix."""
     s3 = boto3.client("s3")
@@ -146,4 +136,3 @@ def list_versions(bucket=S3_BUCKET_NAME, key_prefix=S3_KEY_PREFIX):
             )
     except Exception as e:
         print(f"❌ Error listing versions: {e}")
-
