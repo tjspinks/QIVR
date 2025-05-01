@@ -27,37 +27,42 @@ CHECKS = {
     'ptr':      check_ptr,
 }
 
+# Suggestions for common failures
+SUGGESTIONS = {
+    'spf': "Ensure you have a 'v=spf1' TXT record listing your sending sources and an '-all' or '~all' qualifier.",
+    'dmarc': "Publish a DMARC TXT record at '_dmarc.<your-domain>' with 'v=DMARC1; p=quarantine' or 'p=reject'.",
+    'dkim': "DKIM may exist under non-standard selectors—consider adding custom selectors or checking with your MTA/ESP.",
+    'mx': "Add MX records pointing at your mail servers to accept inbound mail.",
+    'bimi': "For BIMI, publish a 'v=BIMI1' record and host a properly formatted SVG/logo per BIMI spec.",
+}
+
 
 def scan_domain(domain: str) -> dict:
     """
-    Run all configured DNS/email auth checks for a domain.
-    Returns a dict with all results and a final score + reason.
+    Run all DNS/email auth checks for a domain. Returns results dict with raw data and a final score & reason.
     """
     results = {}
-
     for name, fn in CHECKS.items():
         try:
             ret = fn(domain)
             # DKIM & BIMI return three values: (ok, selector, text)
             if name in ('dkim', 'bimi'):
                 ok, selector, txt = ret
-                results[f'{name}_ok']       = ok
+                results[f'{name}_ok'] = ok
                 results[f'{name}_selector'] = selector
-                results[f'{name}_text']     = txt
+                results[f'{name}_text'] = txt
             else:
                 ok, txt = ret
-                results[f'{name}_ok']   = ok
+                results[f'{name}_ok'] = ok
                 results[f'{name}_text'] = txt
         except Exception as e:
-            results[f'{name}_ok']   = False
+            results[f'{name}_ok'] = False
             results[f'{name}_text'] = f'Error: {e}'
-
-    # Calculate final health score and reason
     score, reason = calculate_score(results)
-    results['score']  = score
+    results['score'] = score
     results['reason'] = reason
 
-    # Logging and alert side-effects
+    # Side-effects
     log_to_csv(domain, results, score, reason)
     log_to_json(domain, results, score, reason)
     if ENABLE_SLACK and score < ALERT_SCORE_THRESHOLD:
@@ -70,32 +75,26 @@ def parse_args():
     p = argparse.ArgumentParser(
         description='AuthScanner: DNS checks for email authentication health.'
     )
-    # Neither flag is strictly required; default file is used if domain omitted
-    grp = p.add_mutually_exclusive_group()
-    grp.add_argument(
-        '-d', '--domain',
-        help='Scan a single domain'
+    p.add_argument(
+        '-d', '--domain', help='Scan a single domain (overrides file)'
     )
-    grp.add_argument(
-        '-f', '--file',
-        default=DOMAINS_FILE,
+    p.add_argument(
+        '-f', '--file', default=DOMAINS_FILE,
         help='Path to newline-separated domains file'
     )
     return p.parse_args()
 
 
 def main():
-    # Configure logging
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s %(levelname)s: %(message)s'
     )
-
     args = parse_args()
-
-    # Build the list of domains
+    # Determine domains list
+    domains = []
     if args.domain:
-        domains = [args.domain]
+        domains = [args.domain.strip()]
     else:
         path = Path(args.file)
         if not path.is_file():
@@ -103,15 +102,26 @@ def main():
             return
         domains = [d.strip() for d in path.read_text().splitlines() if d.strip()]
 
-    # Scan each domain
+    # Iterate and scan
     for domain in domains:
         logging.info(f"🔍 Scanning {domain}")
-        try:
-            scan_domain(domain)
-        except Exception as e:
-            logging.error(f"Unhandled error for {domain}: {e}")
+        results = scan_domain(domain)
+        # Human-readable report
+        print(f"\n=== Report for {domain} ===")
+        for name in CHECKS.keys():
+            ok = results.get(f'{name}_ok', False)
+            text = results.get(f'{name}_text', '')
+            status = 'PASS' if ok else 'FAIL'
+            print(f"[{status}] {name.upper()}: {text or 'None'}")
+            # Print suggestion if available
+            if not ok and name in SUGGESTIONS:
+                print(f"   Tip: {SUGGESTIONS[name]}")
+        # Note for DKIM semantics
+        if not results.get('dkim_ok'):
+            print("   Note: DKIM check covers common selectors only; absence doesn't guarantee missing DKIM.")
+        print(f"Score: {results['score']} | Reason: {results['reason']}")
 
-    # After all domains, upload aggregated results
+    # Final side-effect after all
     upload_to_s3()
 
 
