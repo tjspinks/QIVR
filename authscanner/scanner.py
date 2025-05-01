@@ -1,5 +1,6 @@
 import dns.resolver
 import socket
+import ipaddress
 
 # Utilities
 
@@ -8,11 +9,9 @@ def _extract_txt(rdata):
     Join DNS TXT record segments into a single string.
     """
     try:
-        # rdata.strings is a list of byte segments
         parts = getattr(rdata, 'strings', None)
         if parts:
             return ''.join(seg.decode() for seg in parts)
-        # fallback: use to_text()
         return rdata.to_text().strip('"')
     except Exception:
         return ''
@@ -87,8 +86,6 @@ def check_bimi(domain):
     return False, None, 'No BIMI record found'
 
 # ------------- DNSBL ---------------
-import dns.resolver
-
 DNSBL_PROVIDERS = [
     'zen.spamhaus.org',
     'bl.spamcop.net',
@@ -96,42 +93,48 @@ DNSBL_PROVIDERS = [
 ]
 
 def check_dnsbl(domain):
-    ok = True
-    notes = []
+    """
+    Returns (dnsbl_ok: bool, dnsbl_text: str).
+    Checks each MX host's IP against DNSBLs, distinguishing actual listings
+    from Spamhaus error codes (127.255.255.x), timeouts, and no-answer cases.
+    """
     mx_ok, mx_hosts = check_mx(domain)
     if not mx_ok:
         return False, 'No MX records'
 
-    try:
-        # Check all MX hosts
-        for host in mx_hosts:
-            try:
-                ips = [a.to_text() for a in dns.resolver.resolve(host, 'A')]
-            except Exception as e:
-                notes.append(f'Error resolving MX host ({host}): {e}')
-                continue  # Don't immediately fail the entire domain
+    ok = True
+    notes = []
+    for host in mx_hosts:
+        try:
+            ips = [r.to_text() for r in dns.resolver.resolve(host, 'A')]
+        except Exception as e:
+            notes.append(f'Error resolving MX host {host}: {e}')
+            continue
 
-            for ip in ips:
-                rev = '.'.join(reversed(ip.split('.')))
-                for blk in DNSBL_PROVIDERS:
-                    query = f"{rev}.{blk}"
-                    try:
-                        answers = dns.resolver.resolve(query, 'A')
-                        ok = False
-                        for answer in answers:
-                            notes.append(f"IP {ip} listed by {blk} ({answer})")
-                    except dns.resolver.NXDOMAIN:
-                        # NXDOMAIN means not listed, this is expected
-                        continue
-                    except dns.resolver.NoAnswer:
-                        # Treat as clean, since no answer is generally fine
-                        continue
-                    except dns.resolver.Timeout:
-                        notes.append(f"Timeout querying {blk}")
-                    except dns.exception.DNSException as dns_e:
-                        notes.append(f"DNS error ({query}): {dns_e}")
-    except Exception as e:
-        return False, f'Unexpected error: {e}'
+        for ip in ips:
+            rev_ip = '.'.join(reversed(ip.split('.')))
+            for blk in DNSBL_PROVIDERS:
+                query = f"{rev_ip}.{blk}"
+                try:
+                    answers = dns.resolver.resolve(query, 'A')
+                    for ans in answers:
+                        listed_ip = ipaddress.IPv4Address(ans.to_text())
+                        # Skip Spamhaus error return codes 127.255.255.0/24
+                        if listed_ip in ipaddress.IPv4Network('127.255.255.0/24'):
+                            notes.append(f'Error code from {blk}: {listed_ip}')
+                        # Treat true blacklist listings in 127.0.0.0/8 (excluding the error range)
+                        elif listed_ip in ipaddress.IPv4Network('127.0.0.0/8'):
+                            ok = False
+                            notes.append(f'IP {ip} blacklisted by {blk} ({listed_ip})')
+                except dns.resolver.NXDOMAIN:
+                    # Not listed: expected
+                    continue
+                except dns.resolver.NoAnswer:
+                    continue
+                except dns.resolver.Timeout:
+                    notes.append(f'Timeout querying {blk} for {ip}')
+                except dns.exception.DNSException as dns_e:
+                    notes.append(f'DNS error querying {blk} for {ip}: {dns_e}')
 
     return (True, 'Clean') if ok else (False, '; '.join(notes))
 
@@ -171,9 +174,7 @@ def check_tls_rpt(domain):
 def check_caa(domain):
     try:
         answers = dns.resolver.resolve(domain, 'CAA')
-        recs = []
-        for rdata in answers:
-            recs.append(f"{rdata.flags} {rdata.tag} {rdata.value}")
+        recs = [f"{r.flags} {r.tag} {r.value}" for r in answers]
         return (True, '; '.join(recs)) if recs else (False, 'No CAA records')
     except Exception:
         return False, ''
