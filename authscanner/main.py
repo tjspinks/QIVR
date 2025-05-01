@@ -74,14 +74,21 @@ def parse_args():
     return parser.parse_args()
 
 def format_report(domain: str, results: dict) -> str:
-    report_lines = [f"\n📊 Domain Scan Report: {domain}", '-'*50]
+    report_lines = [f"\n\U0001F4CA Domain Scan Report: {domain}", '-'*50]
     for name, detail in results.items():
         if name == 'overall':
             continue
-        status = '✅ PASS' if detail['ok'] else '❌ FAIL'
-        selector = detail.get('selector', '')
-        report_lines.append(f"{status} {name.upper():8} | Selector: {selector if selector else 'N/A'} | Detail: {detail['text']}")
-        if not detail['ok'] and name in SUGGESTIONS:
+
+        if detail['ok']:
+            status = '✅ PASS'
+        elif name in ('dnssec', 'mta_sts', 'tls_rpt', 'caa') and 'not implemented' in detail.get('text', '').lower():
+            status = '⚪ NEUTRAL'
+        else:
+            status = '❌ FAIL'
+
+        selector = detail.get('selector', 'N/A')
+        report_lines.append(f"{status} {name.upper():8} | Selector: {selector} | Detail: {detail['text']}")
+        if status == '❌ FAIL' and name in SUGGESTIONS:
             report_lines.append(f"   💡 Tip: {SUGGESTIONS[name]}")
 
     overall = results['overall']
