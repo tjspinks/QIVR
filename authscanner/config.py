@@ -1,7 +1,7 @@
 import os
 
 # Path to the file containing domains to scan (one per line)
-DOMAINS_FILE = os.getenv("DOMAINS_FILE", "domains.txt")
+DOMAINS_FILE = os.getenv("DOMAINS_FILE", "authscanner/domains.txt")
 
 # Score threshold below which to trigger Slack alerts
 ALERT_SCORE_THRESHOLD = int(os.getenv("ALERT_SCORE_THRESHOLD", "70"))
