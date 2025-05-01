@@ -3,15 +3,22 @@ import logging
 import json
 from pathlib import Path
 
-from scanner import (
+from authscanner.scanner import (
     check_spf, check_dmarc, check_dkim,
     check_mx, check_bimi, check_dnsbl,
     check_dnssec, check_mta_sts, check_tls_rpt,
     check_caa, check_ptr,
 )
-from scorer import calculate_score
-from logger import log_to_csv, log_to_json, send_slack_alert, upload_to_s3
-from config import DOMAINS_FILE, ALERT_SCORE_THRESHOLD, ENABLE_SLACK
+
+from authscanner.scorer import calculate_score
+
+from authscanner.logger import (
+    log_to_csv, log_to_json, send_slack_alert, upload_to_s3
+)
+
+from authscanner.config import (
+    DOMAINS_FILE, ALERT_SCORE_THRESHOLD, ENABLE_SLACK, ENABLE_S3
+)
 
 CHECKS = {
     'spf':      check_spf,
