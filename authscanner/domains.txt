@@ -7,8 +7,4 @@ netflix.com
 sonictoolsusa.com
 beehiiv.io
 blackbaud.com
-mechmindschool.com
-startupdigest.com
-poshmark.com
-marcusforgeorgia.com
-vocabulary.com
+dbltest.com
