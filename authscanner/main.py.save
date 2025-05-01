@@ -1,0 +1,25 @@
+### main.py
+from scanner import check_spf, check_dmarc
+from scorer import calculate_score
+from logger import log_to_csv, send_slack_alert
+from config import DOMAINS_FILE, ALERT_SCORE_THRESHOLD, ENABLE_SLACK
+
+with open(DOMAINS_FILE, "r") as f:
+    for line in f:
+        domain = line.strip()
+        if not domain:
+            continue
+
+        print(f"\n🔍 Checking domain: {domain}")
+
+        spf_ok, spf_text = check_spf(domain)
+        dmarc_ok, dmarc_text = check_dmarc(domain)
+
+        score, reason = calculate_score(spf_ok, dmarc_ok, spf_text, dmarc_text)
+
+        log_to_csv(domain, spf_ok, dmarc_ok, score, reason)
+## log_to_csv(domain,  score, reason)
+
+        if ENABLE_SLACK and score < ALERT_SCORE_THRESHOLD:
+            send_slack_alert(domain, score, reason)
+
