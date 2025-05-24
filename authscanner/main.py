@@ -3,7 +3,7 @@ import logging
 import json
 from pathlib import Path
 
-from authscanner.scanner import (
+from authscanner import (
     check_spf, check_dmarc, check_dkim,
     check_mx, check_bimi, check_dnsbl,
     check_dnssec, check_mta_sts, check_tls_rpt,
