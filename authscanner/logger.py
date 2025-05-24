@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import boto3
 import requests
 
-from authscanner.config import (
+from config import (
     DOMAINS_FILE,
     ENABLE_S3,
     ENABLE_SLACK,
