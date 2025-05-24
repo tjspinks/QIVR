@@ -48,5 +48,5 @@ htmlcov/
 .pytest_cache/
 
 # Authscanner outputs
-results.csv
-results.json
+#results.csv
+#results.json
