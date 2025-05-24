@@ -24,8 +24,8 @@ jobs:
           pip install -r requirements.txt
 
       - name: 🔍 Run AuthScanner
+        working-directory: ./authscanner
         run: |
-          working-directory: ./authscanner
           python main.py
         env:
           ENABLE_SLACK: ${{ secrets.ENABLE_SLACK }}
