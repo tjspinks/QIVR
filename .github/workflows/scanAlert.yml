@@ -25,6 +25,7 @@ jobs:
 
       - name: 🔍 Run AuthScanner
         run: |
+          working-directory: ./authscanner
           python main.py
         env:
           ENABLE_SLACK: ${{ secrets.ENABLE_SLACK }}
