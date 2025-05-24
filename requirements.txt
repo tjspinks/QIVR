@@ -2,3 +2,4 @@ dnspython
 boto3
 slack-sdk
 python-dotenv
+requests
