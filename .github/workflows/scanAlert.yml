@@ -34,10 +34,10 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: 'us-east-1'
 
-      - name: 🚀 Commit scan results
-        run: |
-          git config user.name "authscanner-bot"
-          git config user.email "bot@qivr.dev"
-          git add results.csv results.json || true
-          git commit -m "📊 Auto: Daily AuthScanner Report" || echo "No new changes"
-          git push
+#      - name: 🚀 Commit scan results
+#        run: |
+#          git config user.name "authscanner-bot"
+#          git config user.email "bot@qivr.dev"
+#          git add results.csv results.json || true
+#          git commit -m "📊 Auto: Daily AuthScanner Report" || echo "No new changes"
+#          git push
